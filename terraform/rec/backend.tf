@@ -1,3 +1,4 @@
+
 terraform {
   backend "azurerm" {
     resource_group_name  = "rg-rec-demo"
@@ -5,4 +6,4 @@ terraform {
     container_name       = "terraform-state-rec"
     key                  = "terraform.tfstate"
   }
-} 
+}

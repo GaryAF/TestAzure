@@ -1,3 +1,4 @@
+
 terraform {
   backend "azurerm" {
     resource_group_name  = "rg-ppr-demo"
@@ -5,4 +6,4 @@ terraform {
     container_name       = "terraform-state-ppr"
     key                  = "terraform.tfstate"
   }
-} 
+}

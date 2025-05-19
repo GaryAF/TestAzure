@@ -1,6 +1,2 @@
-environment        = "rec"
-location           = "northeurope"
-tags = {
-  Environment = "Recette"
-  Project     = "Azure Terraform"
-} 
+environment = "rec"
+location    = "northeurope" 

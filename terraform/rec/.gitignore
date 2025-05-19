@@ -1,0 +1,9 @@
+.terraform
+.terraform.lock.hcl
+*.secret
+test.sh*
+.pytest*
+__pycache__
+.env
+credentials*
+*egg*

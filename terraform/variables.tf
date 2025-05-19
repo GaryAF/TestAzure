@@ -1,24 +1,10 @@
-variable "resource_group_name" {
-  description = "Nom du groupe de ressources"
-  type        = string
-}
-
 variable "environment" {
-  description = "Environnement de déploiement (development, preprod, production)"
+  description = "Environnement de déploiement (rec, ppr, prd)"
   type        = string
 }
 
 variable "location" {
-  description = "Région Azure où le groupe de ressources sera créé"
+  description = "Région Azure où déployer les ressources"
   type        = string
-  default     = "francecentral"
-}
-
-variable "tags" {
-  description = "Tags à appliquer au groupe de ressources"
-  type        = map(string)
-  default = {
-    ManagedBy = "Terraform"
-    Project   = "Azure Terraform"
-  }
+  default     = "northeurope"
 }
