@@ -19,7 +19,7 @@ on:
           - prd
 
 jobs:
-  terraform:
+  terraform-plan:
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
 
@@ -54,15 +54,33 @@ jobs:
           terraform plan -out=tfplan
         continue-on-error: true
 
-      - name: Terraform Apply (Production)
-        if: github.ref == 'refs/heads/main'
+  terraform-apply:
+    needs: terraform-plan
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    if: github.event_name == 'workflow_dispatch'
+
+    env:
+      ARM_CLIENT_ID: ${{secrets.TF_ARM_CLIENT_ID}}
+      ARM_CLIENT_SECRET: ${{secrets.TF_ARM_CLIENT_SECRET}}
+      ARM_SUBSCRIPTION_ID: ${{secrets.AZ_SUBID}}
+      ARM_TENANT_ID: ${{secrets.AZ_TENANTID}}
+      ENVIRONMENT: ${{ github.event.inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Terraform Init
         run: |
           cd ./terraform/$ENVIRONMENT
-          terraform apply -auto-approve tfplan
-        continue-on-error: true
+          terraform init
 
-      - name: Terraform Apply (Non-Prod)
-        if: github.ref != 'refs/heads/main'
+      - name: Terraform Apply
         run: |
           cd ./terraform/$ENVIRONMENT
           terraform apply -auto-approve tfplan
