@@ -13,10 +13,6 @@ on:
           - ppr
           - prd
 
-defaults:
-  run:
-    working-directory: ./terraform/${{ github.event.inputs.environment }}
-
 jobs:
   terraform:
     runs-on: ubuntu-latest
@@ -27,6 +23,7 @@ jobs:
       ARM_CLIENT_SECRET: ${{secrets.TF_ARM_CLIENT_SECRET}}
       ARM_SUBSCRIPTION_ID: ${{secrets.AZ_SUBID}}
       ARM_TENANT_ID: ${{secrets.AZ_TENANTID}}
+      ENVIRONMENT: ${{ github.event.inputs.environment }}
 
     steps:
       - uses: actions/checkout@v3
@@ -37,21 +34,30 @@ jobs:
           terraform_version: "1.5.7"
 
       - name: LS ENV
-        run: ls -l
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          ls -l
 
       - name: Terraform Init
-        run: terraform init
-
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          terraform init
 
       - name: Terraform Plan
-        run: terraform plan 
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          terraform plan -out=tfplan
         continue-on-error: true
 
       - name: Terraform Apply (Production)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prd'
-        run: terraform apply -auto-approve tfplan
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          terraform apply -auto-approve tfplan
         continue-on-error: true
 
       - name: Terraform Apply (Non-Prod)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment != 'prd'
-        run: terraform apply -auto-approve tfplan
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          terraform apply -auto-approve tfplan
