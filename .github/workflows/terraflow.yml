@@ -36,14 +36,18 @@ jobs:
         with:
           terraform_version: "1.5.7"
 
+      - name: Moove Env
+        run: cd ${{ github.event.inputs.environment }}
+
+      - name: LS ENV
+        run: ls -l
+
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Select Workspace
-        run: terraform workspace select ${{ github.event.inputs.environment }} || terraform workspace new ${{ github.event.inputs.environment }}
 
       - name: Terraform Plan
-        run: terraform plan -var-file="environments/${{ github.event.inputs.environment }}/terraform.tfvars" -out=tfplan
+        run: terraform plan 
         continue-on-error: true
 
       - name: Terraform Apply (Production)
