@@ -15,7 +15,7 @@ on:
 
 defaults:
   run:
-    working-directory: ./terraform
+    working-directory: ./terraform/${{ github.event.inputs.environment }}
 
 jobs:
   terraform:
@@ -35,9 +35,6 @@ jobs:
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: "1.5.7"
-
-      - name: Moove Env
-        run: cd ${{ github.event.inputs.environment }}
 
       - name: LS ENV
         run: ls -l
