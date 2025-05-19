@@ -7,29 +7,11 @@ on:
       - release
       - "**"
   workflow_dispatch:
-    inputs:
-      action:
-        description: "Action à effectuer"
-        required: true
-        type: choice
-        options:
-          - plan
-          - apply
-      environment:
-        description: "Environnement à déployer"
-        required: true
-        default: "rec"
-        type: choice
-        options:
-          - rec
-          - ppr
-          - prd
 
 jobs:
   terraform-plan:
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
 
     env:
       ARM_CLIENT_ID: ${{secrets.TF_ARM_CLIENT_ID}}
@@ -65,14 +47,14 @@ jobs:
       - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-${{ github.ref_name }}
-          path: ./terraform/$ENVIRONMENT/tfplan
+          name: tfplan-${{ env.ENVIRONMENT }}
+          path: ./terraform/${{ env.ENVIRONMENT }}/tfplan
 
   terraform-apply:
     needs: terraform-plan
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+    # Configurez l'environnement qui exige une approbation
+    environment: ${{ github.ref == 'refs/heads/main' && 'prd-approval' || github.ref == 'refs/heads/release' && 'ppr-approval' || 'rec-approval' }}
 
     env:
       ARM_CLIENT_ID: ${{secrets.TF_ARM_CLIENT_ID}}
@@ -87,8 +69,8 @@ jobs:
       - name: Download Terraform Plan
         uses: actions/download-artifact@v4
         with:
-          name: tfplan-${{ github.ref_name }}
-          path: ./terraform/$ENVIRONMENT
+          name: tfplan-${{ env.ENVIRONMENT }}
+          path: ./terraform/${{ env.ENVIRONMENT }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
