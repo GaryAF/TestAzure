@@ -1,7 +1,11 @@
 variable "resource_group_name" {
   description = "Nom du groupe de ressources"
   type        = string
-  default     = "rg-test-github"
+}
+
+variable "environment" {
+  description = "Environnement de déploiement (development, preprod, production)"
+  type        = string
 }
 
 variable "location" {
@@ -14,7 +18,7 @@ variable "tags" {
   description = "Tags à appliquer au groupe de ressources"
   type        = map(string)
   default = {
-    Environment = "Production"
-    Project     = "Azure Terraform"
+    ManagedBy = "Terraform"
+    Project   = "Azure Terraform"
   }
 }

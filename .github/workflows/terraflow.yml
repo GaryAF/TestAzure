@@ -1,6 +1,17 @@
-name: Terraform sample workflow
+name: Terraform Infrastructure Deployment
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environnement à déployer"
+        required: true
+        default: "rec"
+        type: choice
+        options:
+          - rec
+          - ppr
+          - prd
 
 defaults:
   run:
@@ -9,29 +20,37 @@ defaults:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
 
     env:
       ARM_CLIENT_ID: ${{secrets.TF_ARM_CLIENT_ID}}
       ARM_CLIENT_SECRET: ${{secrets.TF_ARM_CLIENT_SECRET}}
       ARM_SUBSCRIPTION_ID: ${{secrets.AZ_SUBID}}
       ARM_TENANT_ID: ${{secrets.AZ_TENANTID}}
-      TF_VAR_administrator_login: ${{secrets.TF_VAR_administrator_login}}
-      TF_VAR_administrator_login_password: ${{secrets.TF_VAR_administrator_login_password}}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v1
-        
-      - name: List directory
-        run: ls -a
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.7"
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend-config=environments/${{ github.event.inputs.environment }}/backend.tf
+
+      - name: Terraform Select Workspace
+        run: terraform workspace select ${{ github.event.inputs.environment }} || terraform workspace new ${{ github.event.inputs.environment }}
 
       - name: Terraform Plan
-        run: terraform plan
-        
+        run: terraform plan -var-file="environments/${{ github.event.inputs.environment }}/terraform.tfvars" -out=tfplan
+        continue-on-error: true
+
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prd'
+        run: terraform apply -auto-approve tfplan
+        continue-on-error: true
+
+      - name: Terraform Apply (Non-Prod)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment != 'prd'
+        run: terraform apply -auto-approve tfplan
