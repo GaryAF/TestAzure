@@ -7,6 +7,6 @@ locals {
 }
 
 resource "azurerm_resource_group" "rg" {
-  name     = "gary_test${var.environment}"
+  name     = "gary_test_good_${var.environment}"
   location = var.location
 }
