@@ -26,7 +26,15 @@ jobs:
           # Trouver tous les dossiers commençant par batch_
           BATCH_DIRS=$(find . -maxdepth 1 -type d -name "batch_*" -printf "%f\n")
           # Créer la matrice JSON
-          echo "matrix={\"include\":[$(echo "$BATCH_DIRS" | while read dir; do echo "{\"batch_dir\":\"$dir\"},"; done | sed '$ s/,$//')]}" >> $GITHUB_OUTPUT
+          MATRIX="{\"include\":["
+          while IFS= read -r dir; do
+            if [ ! -z "$dir" ]; then
+              MATRIX="$MATRIX{\"batch_dir\":\"$dir\"},"
+            fi
+          done <<< "$BATCH_DIRS"
+          # Enlever la dernière virgule et fermer le JSON
+          MATRIX="${MATRIX%,}]}"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   list-directory:
     needs: find-batch-dirs
