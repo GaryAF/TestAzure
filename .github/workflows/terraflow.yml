@@ -9,21 +9,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  
-
   build-and-push-batch:
     runs-on: ubuntu-latest
-
     # Définissez l'environnement en premier
     environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
     
     env:
       BATCH_NAME: test
       ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
-      client-id: ${{ secrets.TF_ARM_CLIENT_ID }}
-      client-secret: ${{ secrets.TF_ARM_CLIENT_SECRET }}
-      tenant-id: ${{ secrets.AZ_TENANTID }}
-      subscription-id: ${{ secrets.AZ_SUBID }}
 
     steps:
       - uses: actions/checkout@v4
@@ -40,18 +33,21 @@ jobs:
             echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_REC }}" >> $GITHUB_ENV
           fi
 
+      # Option 1: Utilisez directement les variables d'environnement définies pour l'authentification Azure
       - name: Azure login
         uses: azure/login@v1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.TF_ARM_CLIENT_ID }}
+          client-secret: ${{ secrets.TF_ARM_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.AZ_TENANTID }}
+          subscription-id: ${{ secrets.AZ_SUBID }}
 
-      - name: Log in to Azure Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.ACR_URL }}
-          # Username and password are not needed when logged in via azure/login
+      # Option 2: Utilisez az acr login pour vous connecter à ACR après l'authentification Azure
+      - name: Log in to ACR
+        run: |
+          # Extraire le nom de l'ACR de l'URL (enlever .azurecr.io)
+          ACR_NAME=$(echo $ACR_URL | cut -d'.' -f1)
+          az acr login --name $ACR_NAME
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
