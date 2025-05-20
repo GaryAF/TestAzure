@@ -1,4 +1,4 @@
-name: Batch Directory Listing
+name: Build and Push Batch Docker Images
 
 on:
   push:
@@ -29,23 +29,92 @@ jobs:
           MATRIX="{\"include\":["
           while IFS= read -r dir; do
             if [ ! -z "$dir" ]; then
-              MATRIX="$MATRIX{\"batch_dir\":\"$dir\"},"
+              BATCH_NAME="${dir#batch_}"
+              MATRIX="$MATRIX{\"batch_dir\":\"$dir\",\"batch_name\":\"$BATCH_NAME\"},"
             fi
           done <<< "$BATCH_DIRS"
           # Enlever la dernière virgule et fermer le JSON
           MATRIX="${MATRIX%,}]}"
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
-  list-directory:
+  build-and-push:
     needs: find-batch-dirs
     runs-on: ubuntu-latest
     strategy:
       matrix: ${{ fromJson(needs.find-batch-dirs.outputs.matrix) }}
+    
+    # Définir l'environnement selon la branche
+    environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
+    
+    env:
+      # Utilisation des secrets existants
+      ARM_CLIENT_ID: ${{ secrets.TF_ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.TF_ARM_CLIENT_SECRET }}
+      ARM_TENANT_ID: ${{ secrets.AZ_TENANTID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZ_SUBID }}
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: List directory contents
+      # Vérifier que le Dockerfile existe
+      - name: Check for Dockerfile
+        id: check_dockerfile
         run: |
-          echo "Listing contents of ${{ matrix.batch_dir }}:"
-          ls -l ${{ matrix.batch_dir }}
+          if [ -f "${{ matrix.batch_dir }}/Dockerfile" ]; then
+            echo "dockerfile_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "dockerfile_exists=false" >> $GITHUB_OUTPUT
+            echo "Warning: No Dockerfile found in ${{ matrix.batch_dir }}. Skipping build."
+          fi
+
+      # Déterminer l'URL ACR en fonction de l'environnement
+      - name: Set ACR URL based on environment
+        if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
+        id: set-acr-url
+        run: |
+          if [ "$ENVIRONMENT" = "prd" ]; then
+            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_PRD }}" >> $GITHUB_ENV
+          elif [ "$ENVIRONMENT" = "ppr" ]; then
+            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_PPR }}" >> $GITHUB_ENV
+          else
+            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_REC }}" >> $GITHUB_ENV
+          fi
+          
+          # Extraire le nom de l'ACR de l'URL (sans .azurecr.io)
+          ACR_NAME=$(echo "$ACR_URL" | cut -d'.' -f1)
+          echo "ACR_NAME=$ACR_NAME" >> $GITHUB_ENV
+
+      # Connexion à Azure
+      - name: Azure login
+        if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
+        uses: azure/login@v1
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          client-secret: ${{ env.ARM_CLIENT_SECRET }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
+
+      # Connexion à ACR via az CLI
+      - name: Login to ACR
+        if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+
+      # Configurer Docker
+      - name: Set up Docker Buildx
+        if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      # Construction et push de l'image Docker
+      - name: Build and push Docker image
+        if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.batch_dir }}
+          push: true
+          tags: |
+            ${{ env.ACR_URL }}/batch-${{ matrix.batch_name }}:${{ env.ENVIRONMENT }}
+            ${{ env.ACR_URL }}/batch-${{ matrix.batch_name }}:${{ env.ENVIRONMENT }}-${{ github.sha }}
+          file: ./${{ matrix.batch_dir }}/Dockerfile
