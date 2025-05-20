@@ -89,8 +89,6 @@ jobs:
 
   build-and-push-batch:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && contains(toJson(github.event.commits.*.modified), 'batch_')
-
     # Définissez l'environnement en premier
     environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
     
