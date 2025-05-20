@@ -8,7 +8,9 @@ on:
       - "**"
   workflow_dispatch:
 
+# Ajout des permissions nécessaires pour l'authentification Azure
 permissions:
+  id-token: write
   contents: read
 
 jobs:
@@ -47,11 +49,6 @@ jobs:
     environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
     
     env:
-      # Utilisation des secrets existants
-      ARM_CLIENT_ID: ${{ secrets.TF_ARM_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.TF_ARM_CLIENT_SECRET }}
-      ARM_TENANT_ID: ${{ secrets.AZ_TENANTID }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZ_SUBID }}
       ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
     
     steps:
@@ -83,24 +80,17 @@ jobs:
           fi
           
           # Extraire le nom de l'ACR de l'URL (sans .azurecr.io)
-          ACR_NAME=$(echo "$ACR_URL" | cut -d'.' -f1)
+          ACR_NAME=$(echo "${{ secrets.AZURE_CONTAINER_REGISTRY_URL_REC }}" | cut -d'.' -f1)
           echo "ACR_NAME=$ACR_NAME" >> $GITHUB_ENV
 
-      # Connexion à Azure
-      - name: Azure login
+      # Méthode 1: Utiliser docker/login-action avec les Service Principal credentials
+      - name: Login to ACR with Service Principal
         if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
-        uses: azure/login@v1
+        uses: docker/login-action@v3
         with:
-          client-id: ${{ env.ARM_CLIENT_ID }}
-          client-secret: ${{ env.ARM_CLIENT_SECRET }}
-          tenant-id: ${{ env.ARM_TENANT_ID }}
-          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
-
-      # Connexion à ACR via az CLI
-      - name: Login to ACR
-        if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
-        run: |
-          az acr login --name ${{ env.ACR_NAME }}
+          registry: ${{ env.ACR_URL }}
+          username: ${{ secrets.TF_ARM_CLIENT_ID }}
+          password: ${{ secrets.TF_ARM_CLIENT_SECRET }}
 
       # Configurer Docker
       - name: Set up Docker Buildx
