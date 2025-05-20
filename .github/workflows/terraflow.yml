@@ -20,10 +20,10 @@ jobs:
     env:
       BATCH_NAME: test
       ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
-      ARM_CLIENT_ID: ${{secrets.TF_ARM_CLIENT_ID}}
-      ARM_CLIENT_SECRET: ${{secrets.TF_ARM_CLIENT_SECRET}}
-      ARM_SUBSCRIPTION_ID: ${{secrets.AZ_SUBID}}
-      ARM_TENANT_ID: ${{secrets.AZ_TENANTID}}
+      client-id: ${{ secrets.TF_ARM_CLIENT_ID }}
+      client-secret: ${{ secrets.TF_ARM_CLIENT_SECRET }}
+      tenant-id: ${{ secrets.AZ_TENANTID }}
+      subscription-id: ${{ secrets.AZ_SUBID }}
 
     steps:
       - uses: actions/checkout@v4
