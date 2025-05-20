@@ -105,6 +105,5 @@ jobs:
           context: ./${{ matrix.batch_dir }}
           push: true
           tags: |
-            ${{ env.ACR_URL }}/batch-${{ matrix.batch_name }}:${{ env.ENVIRONMENT }}
-            ${{ env.ACR_URL }}/batch-${{ matrix.batch_name }}:${{ env.ENVIRONMENT }}-${{ github.sha }}
+            ${{ env.ACR_URL }}/batch-${{ matrix.batch_name }}-${{ env.ENVIRONMENT }}:latest
           file: ./${{ matrix.batch_dir }}/Dockerfile
