@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Batch Directory Listing
 
 on:
   push:
@@ -8,71 +8,36 @@ on:
       - "**"
   workflow_dispatch:
 
-# Ajout des permissions nécessaires
 permissions:
-  id-token: write
   contents: read
 
 jobs:
-  build-and-push-batch:
+  find-batch-dirs:
     runs-on: ubuntu-latest
-    # Définissez l'environnement en premier
-    environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
-
-    env:
-      BATCH_NAME: test
-      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
-
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Déterminer l'URL ACR en fonction de l'environnement
-      - name: Set ACR URL based on environment
-        id: set-acr-url
+      - name: Find batch directories
+        id: set-matrix
         run: |
-          if [ "$ENVIRONMENT" = "prd" ]; then
-            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_PRD }}" >> $GITHUB_ENV
-            echo "ACR_NAME=$(echo ${{ secrets.AZURE_CONTAINER_REGISTRY_URL_PRD }} | cut -d'.' -f1)" >> $GITHUB_ENV
-          elif [ "$ENVIRONMENT" = "ppr" ]; then
-            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_PPR }}" >> $GITHUB_ENV
-            echo "ACR_NAME=$(echo ${{ secrets.AZURE_CONTAINER_REGISTRY_URL_PPR }} | cut -d'.' -f1)" >> $GITHUB_ENV
-          else
-            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_REC }}" >> $GITHUB_ENV
-            echo "ACR_NAME=$(echo ${{ secrets.AZURE_CONTAINER_REGISTRY_URL_REC }} | cut -d'.' -f1)" >> $GITHUB_ENV
-          fi
+          # Trouver tous les dossiers commençant par batch_
+          BATCH_DIRS=$(find . -maxdepth 1 -type d -name "batch_*" -printf "%f\n")
+          # Créer la matrice JSON
+          echo "matrix={\"include\":[$(echo "$BATCH_DIRS" | while read dir; do echo "{\"batch_dir\":\"$dir\"},"; done | sed '$ s/,$//')]}" >> $GITHUB_OUTPUT
 
-      # Configuration de Docker avec authentification directe à ACR
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  list-directory:
+    needs: find-batch-dirs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.find-batch-dirs.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # Utiliser l'action docker/login-action pour se connecter directement à ACR avec SP
-      - name: Login to Azure Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.ACR_URL }}
-          username: ${{ secrets.TF_ARM_CLIENT_ID }}
-          password: ${{ secrets.TF_ARM_CLIENT_SECRET }}
-
-      # Vérifier que le dossier batch_test existe
-      - name: Check batch directory
+      - name: List directory contents
         run: |
-          ls -la ./
-          if [ -d "./batch_${{ env.BATCH_NAME }}" ]; then
-            echo "Batch directory exists"
-            ls -la ./batch_${{ env.BATCH_NAME }}/
-          else
-            echo "ERROR: Batch directory not found!"
-            exit 1
-          fi
-
-      # Construction et push
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./batch_${{ env.BATCH_NAME }}
-          push: true
-          tags: |
-            ${{ env.ACR_URL }}/batch-${{ env.BATCH_NAME }}:${{ env.ENVIRONMENT }}
-            ${{ env.ACR_URL }}/batch-${{ env.BATCH_NAME }}:${{ env.ENVIRONMENT }}-${{ github.sha }}
-          file: ./batch_${{ env.BATCH_NAME }}/Dockerfile
+          echo "Listing contents of ${{ matrix.batch_dir }}:"
+          ls -l ${{ matrix.batch_dir }}
