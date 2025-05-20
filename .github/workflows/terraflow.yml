@@ -87,4 +87,37 @@ jobs:
           cd ./terraform/$ENVIRONMENT
           terraform apply -auto-approve tfplan
 
- 
+  build-and-push-batch:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && contains(toJson(github.event.commits.*.modified), 'batch_')
+
+    env:
+      BATCH_NAME: test
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
+      AZURE_CONTAINER_REGISTRY_URL: ${{ secrets['AZURE_CONTAINER_REGISTRY_URL_' + env.ENVIRONMENT] }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.AZURE_CONTAINER_REGISTRY_URL }}
+          # Username and password are not needed when logged in via azure/login
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./batch_${{ env.BATCH_NAME }}
+          push: true
+          tags: |
+            ${{ env.AZURE_CONTAINER_REGISTRY_URL }}/batch-${{ env.BATCH_NAME }}:${{ env.ENVIRONMENT }}
+            ${{ env.AZURE_CONTAINER_REGISTRY_URL }}/batch-${{ env.BATCH_NAME }}:${{ env.ENVIRONMENT }}-${{ github.sha }}
+          file: ./batch_${{ env.BATCH_NAME }}/Dockerfile
