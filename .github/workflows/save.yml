@@ -1,0 +1,135 @@
+name: Terraform Infrastructure Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - release
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
+
+    env:
+      ARM_CLIENT_ID: ${{secrets.TF_ARM_CLIENT_ID}}
+      ARM_CLIENT_SECRET: ${{secrets.TF_ARM_CLIENT_SECRET}}
+      ARM_SUBSCRIPTION_ID: ${{secrets.AZ_SUBID}}
+      ARM_TENANT_ID: ${{secrets.AZ_TENANTID}}
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: LS ENV
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          ls -l
+
+      - name: Terraform Init
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          terraform init
+
+      - name: Terraform Plan
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          terraform plan -out=tfplan
+        continue-on-error: true
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ env.ENVIRONMENT }}
+          path: ./terraform/${{ env.ENVIRONMENT }}/tfplan
+
+  terraform-apply:
+    needs: terraform-plan
+    runs-on: ubuntu-latest
+    # Configurez l'environnement qui exige une approbation
+    environment: ${{ github.ref == 'refs/heads/main' && 'iac-prd-approval' || github.ref == 'refs/heads/release' && 'iac-ppr-approval' || 'iac-rec-approval' }}
+
+    env:
+      ARM_CLIENT_ID: ${{secrets.TF_ARM_CLIENT_ID}}
+      ARM_CLIENT_SECRET: ${{secrets.TF_ARM_CLIENT_SECRET}}
+      ARM_SUBSCRIPTION_ID: ${{secrets.AZ_SUBID}}
+      ARM_TENANT_ID: ${{secrets.AZ_TENANTID}}
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ env.ENVIRONMENT }}
+          path: ./terraform/${{ env.ENVIRONMENT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Terraform Init
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          terraform init
+
+      - name: Terraform Apply
+        run: |
+          cd ./terraform/$ENVIRONMENT
+          terraform apply -auto-approve tfplan
+
+  build-and-push-batch:
+    runs-on: ubuntu-latest
+    # Définissez l'environnement en premier
+    environment: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
+    
+    env:
+      BATCH_NAME: test
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/release' && 'ppr' || 'rec' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Déterminer l'URL ACR en fonction de l'environnement
+      - name: Set ACR URL based on environment
+        id: set-acr-url
+        run: |
+          if [ "$ENVIRONMENT" = "prd" ]; then
+            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_PRD }}" >> $GITHUB_ENV
+          elif [ "$ENVIRONMENT" = "ppr" ]; then
+            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_PPR }}" >> $GITHUB_ENV
+          else
+            echo "ACR_URL=${{ secrets.AZURE_CONTAINER_REGISTRY_URL_REC }}" >> $GITHUB_ENV
+          fi
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_URL }}
+          # Username and password are not needed when logged in via azure/login
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./batch_${{ env.BATCH_NAME }}
+          push: true
+          tags: |
+            ${{ env.ACR_URL }}/batch-${{ env.BATCH_NAME }}:${{ env.ENVIRONMENT }}
+            ${{ env.ACR_URL }}/batch-${{ env.BATCH_NAME }}:${{ env.ENVIRONMENT }}-${{ github.sha }}
+          file: ./batch_${{ env.BATCH_NAME }}/Dockerfile
